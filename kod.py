@@ -1,0 +1,134 @@
+# -*- coding: utf-8 -*-
+import logging
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+# 🔐 Token va kanal username
+BOT_TOKEN = "8227620479:AAG8QpNFwwn_d7Maja0vhuUvYcK2bAhxI6A"
+CHANNEL_USERNAME = "@Music3_uz"
+ACCESS_CODE = "topolmiysan"  # Siz belgilaydigan maxfiy kod
+
+# --- Caption matnlar ---
+SONG_TEXT = """ㅤ ㅤ ⇆ㅤ     ◁ㅤ❚❚ㅤ▷ㅤ    ↻
+00:00 ●━━───── 00:35
+🔊 ▁ ▂ ▃ ▄ ▅ ▆ ▇ █ 
+🎧 𝗡𝗘𝗪 𝗠𝗨𝗦𝗜𝗖 🔊
+ᵗᵉˡᵉᵍʳᵃᵐ➪ @Music3_uz
+➳𝙴𝙽𝙶 𝚉𝙰𝙼𝙾𝙽𝙰𝚅𝙸𝚈 𝚀𝙾ʻ𝚂𝙷𝙸𝚐𝙻𝙰𝚁 𝙱𝙸𝚉𝙳𝙰☚"""
+
+VOICE_TEXT = """⇆       ◁ㅤ❚❚ㅤ▷ㅤ    ↻
+00:00 ●━━───── 00:35
+  ➳ 𝙴𝙽𝙶 𝚉𝙰𝙼𝙾𝙽𝙰𝚅𝙸𝚈☚
+  ➳ 𝚀𝙾ʻ𝚂𝙷𝙸𝚐𝙻𝙰𝚁 𝙱𝙸𝚉𝙳𝙰☚
+   🎵 To'liq Mp3 Pastda👇"""
+
+VIDEO_TEXT = """🎬  ∞𝐁𝐈𝐙𝐃𝐀𝐍 𝐔𝐙𝐎𝐐𝐋𝐀𝐒𝐇𝐌𝐀𝐍𝐆∞ 🌟"""
+PHOTO_TEXT = """🖼️  𝐁𝐈𝐙𝐍𝐈 𝐊𝐔𝐙𝐀𝐓𝐈𝐁 𝐁𝐎𝐑𝐆𝐀𝐍𝐋𝐀𝐑𝐆𝐀 𝐑𝐀𝐗𝐌𝐀𝐓 📸"""
+
+# ✅ Kod kiritgan foydalanuvchilar ro‘yxati
+allowed_users = set()
+
+
+def _is_audio_document(mime: str | None) -> bool:
+    return bool(mime and mime.startswith("audio/"))
+
+
+# --- /start komandasi ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id in allowed_users:
+        await update.message.reply_text("✅ Siz allaqachon kod kiritgansiz. Media yuborishingiz mumkin.")
+        return
+
+    await update.message.reply_text("🔑 Kirish uchun kodni kiriting:")
+
+
+# --- Kod tekshirish ---
+async def check_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+
+    if user_id in allowed_users:
+        return  # Agar foydalanuvchi allaqachon ruxsat olgan bo‘lsa → tekshirish shart emas
+
+    if text == ACCESS_CODE:
+        allowed_users.add(user_id)
+        await update.message.reply_text("✅ Kod to‘g‘ri! Endi media yuborishingiz mumkin.")
+    else:
+        await update.message.reply_text("❌ Noto‘g‘ri kod! Iltimos, qaytadan /start bosing.")
+
+
+# --- Media yuborilganda ---
+async def send_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    user_id = update.effective_user.id
+
+    # 👮 Faqat kod kiritganlarga ruxsat
+    if user_id not in allowed_users:
+        await msg.reply_text("🚫 Avval /start bosib kod kiriting!")
+        return
+
+    if not msg:
+        return
+
+    try:
+        if msg.audio:
+            await context.bot.send_audio(CHANNEL_USERNAME, msg.audio.file_id, caption=SONG_TEXT)
+
+        elif msg.document and _is_audio_document(msg.document.mime_type):
+            await context.bot.send_audio(CHANNEL_USERNAME, msg.document.file_id, caption=SONG_TEXT)
+
+        elif msg.photo:
+            await context.bot.send_photo(CHANNEL_USERNAME, msg.photo[-1].file_id, caption=PHOTO_TEXT)
+
+        elif msg.voice:
+            await context.bot.send_voice(CHANNEL_USERNAME, msg.voice.file_id, caption=VOICE_TEXT)
+
+        elif msg.video:
+            await context.bot.send_video(CHANNEL_USERNAME, msg.video.file_id, caption=VIDEO_TEXT)
+
+        else:
+            await msg.reply_text("❗ Faqat media yuboring (audio, rasm, ovoz yoki video).")
+            return
+
+        await msg.reply_text("✅ Kanalga post qilindi!")
+
+    except Exception as e:
+        logging.exception("Xato: %s", e)
+        await msg.reply_text(f"⚠️ Xatolik: {e}")
+
+
+def main():
+    logging.basicConfig(level=logging.INFO)
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    # 🔹 Kod tekshirish va start
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_code))
+
+    # 🔹 Media filtrlash
+    media_filters = (
+        filters.AUDIO
+        | filters.Document.MimeType("audio/mpeg")
+        | filters.Document.MimeType("audio/mp4")
+        | filters.PHOTO
+        | filters.VOICE
+        | filters.VIDEO
+    )
+
+    app.add_handler(MessageHandler(media_filters, send_media))
+
+    print("🤖 Bot ishga tushdi...")
+    app.run_polling(allowed_updates=["message"])
+
+
+if __name__ == "__main__":
+    main()
